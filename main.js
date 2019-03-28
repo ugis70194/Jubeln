@@ -1,14 +1,15 @@
+const vm = new Vue()
+
 const timeRender = Vue.component('time-render',{
     template:
     `
     <div>
         <p>
-            到着したい時刻: <input type='time' v-model='wantArrive'> 
+            到着したい時刻: <input type='time' name='time' v-model='wantArrive'> 
         </p>
         <p> 現在:{{ hour }}時{{ min }}分 </p>
         <p> 所要時間: {{ taketime }} 分 </p>
-        <p> {{ getBefore }} </p>
-        <p> {{ getAfter }} </p>
+        <p> 予想到着時刻: {{ arivtime }} </p>
     </div>
     `,
     data: function(){
@@ -18,44 +19,36 @@ const timeRender = Vue.component('time-render',{
             taketime: 0,
             hour: 0,
             min: 0,
+            diff: 0,
         }
     },
     computed:{
-        getBefore(){
-            let hour = this.hour
-            let min = this.min
-            if(min - 15 < 0){
-                if(hour == 0) hour = 23
-                else {
-                    hour -= 1
-                    min = 60 - (15-min)
-                }
+        arivtime(){
+            let hour=this.hour
+            let min=this.min
+            if(this.taketime!=null)
+                min+=this.taketime
+            if(min>=60){
+                hour+=parseInt(min/60)
+                min%=60
             }
-            else min -= 15
-            hour = hour.toString()
-            min = min.toString()
+            if(hour>=24)
+                hour-=24
+            let arivt=hour+"時"+min+"分"
 
-            let before = '15分前:' + hour + '時' + min + '分'
+            if(this.wantArrive === null) return arivt
+            let wantArrive = this.wantArrive
 
-            return before
-        },
-        getAfter(){
-            let hour = this.hour
-            let min = this.min
-            if(min + 60 < 0){
-                if(hour == 23) hour = 0
-                else {
-                    hour += 1
-                    min = 15 - (60-min)
-                }
-            }
-            else min += 15
-            hour = hour.toString()
-            min = min.toString()
+            let wantHour = wantArrive.substr(0,2)
+            if(wantHour[0] === '0') wantHour = wantHour[1]
 
-            let after = '15分後:' + hour + '時' + min + '分'
+            let wantMin = wantArrive.substr(3,2)
+            if(wantMin[0] === '0') wantMin = wantMin[1]
 
-            return after
+            let diff = parseInt(wantHour)*60+parseInt(wantMin) - hour*60-min
+            window.diff = diff
+
+            return arivt
         }
     },
     methods: {
@@ -64,7 +57,7 @@ const timeRender = Vue.component('time-render',{
             this.hour = now.getHours();
             this.min = now.getMinutes();
             this.taketime = window.taketime
-        }
+        },
     },
     mounted(){
         this.getNowTimer = setInterval(this.getNow,250)
@@ -82,7 +75,7 @@ let runningCheck = Vue.component('running-check',{
         {{ ay }} <br>
         {{ az }} <br>
         {{ sumAcceleration }} <br>
-        <h1> {{ text }} </h1> 
+        <h1 > {{ text }} </h1> 
     </div>
     `,
     data: function(){
@@ -94,17 +87,18 @@ let runningCheck = Vue.component('running-check',{
             averageSumAcceleration: 0,
             text: null,
             updateAccelerationTimer: null,
+            //fight: false,
         }
     },
     watch:{
         averageSumAcceleration(newAcc, oldAcc){
-            if(newAcc > 0 && oldAcc > 0){
+            if(newAcc > 2 && oldAcc > 2){
                 //this.text = 'Fight!'
-                this.text = 'がんばれ♡がんばれ♡'
-                this.count++
+                this.text = this.changeMessage()
+                console.log("ok")
             }
             //else if(this.text === 'Fight!' && newAcc < 4) this.text = null
-            else if(this.text === 'がんばれ♡がんばれ♡' && newAcc < 0) this.text = null
+            else if(this.text != null && newAcc < 0.5) this.text = null
         }
     },
     methods: {
@@ -117,6 +111,15 @@ let runningCheck = Vue.component('running-check',{
             this.sumAcceleration =  this.ax + this.ay + this.az
             this.averageSumAcceleration = (this.averageSumAcceleration + this.sumAcceleration) / 2
         },
+        changeMessage(){
+            console.log(window.diff)
+            if(window.diff > 30 || window.diff < -120) return 'これは間に合いますね'
+            if(-5 <= window.diff && window.diff < 5) return 'ちょっと急がないと！頑張ってください！'
+            if(-20 <= window.diff && window.diff < -5) return '走らないと間に合わないですよ！ファイト！'
+            if(-120 < window.diff && window.diff < -20) return 'もう間に合わないですよ～'
+
+            return 'がんばれ♡がんばれ♡'
+        }
     },
     mounted(){
         window.addEventListener('devicemotion', this.getAcceleration, false)
@@ -166,16 +169,19 @@ function btn1Click(){
         start=new Y.LatLng(lat,lng);
 
         ymap.drawMap(start, 15, Y.LayerSetId.NORMAL);  
-        ymap.removeLayer(layer);
         
-        var data=new Array();
-        data.push(start);
-        data.push(goal);
-        //alert(start.toString());
-        //alert(goal.toString());
-        layer.execute(data);
-        ymap.addLayer(layer);
         window.taketime = distance(start,goal);
+
+        audiojs.events.ready(function(){
+            var as =audiojs.createAll();
+        });
+        var str = "safe";
+        var audio = document.createElement("audio");
+        audio.src="./audio/"+str+".mp3";
+        audio.controls=false;
+        audio.loop=false;
+        audio.autoplay=true;
+
     });
 }
 
@@ -184,7 +190,7 @@ let mapRender = Vue.component('map-render',{
     `   
         <div>
             <div id="map" style="width:800px; height:600px"></div>
-            <input type="button" id="btn1" value="更新" onclick="btn1Click()" />
+            <input type="button" id="btn1" value="現在地" onclick="btn1Click()" />
         </div>
     `,
     methods:{
